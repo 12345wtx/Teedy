@@ -1,0 +1,108 @@
+'use strict';
+
+/**
+ * Login controller.
+ */
+angular.module('docs').controller('Login', function(Restangular, $scope, $rootScope, $state, $stateParams, $dialog, User, $translate, $uibModal, $window, $timeout) {
+  $scope.codeRequired = false;
+  
+  // 跟踪页面加载是否完成
+  $scope.pageLoaded = false;
+  $timeout(function() {
+    $scope.pageLoaded = true;
+    console.log("Login page loaded successfully");
+  }, 500);
+
+  // Get the app configuration
+  Restangular.one('app').get().then(function(data) {
+    $rootScope.app = data;
+  });
+
+  $scope.translate = function(key, params) {
+    return $translate.instant(key, params);
+  };
+
+  /**
+   * Go to register page.
+   */
+  $scope.goToRegister = function() {
+    console.log("Navigating to register page...");
+    try {
+      // 多种导航方式
+      $state.go('register');
+      $timeout(function() {
+        if ($state.current.name !== 'register') {
+          $window.location.href = '#/register';
+        }
+      }, 100);
+    } catch (e) {
+      console.error("Navigation error:", e);
+      $window.location.href = '#/register';
+    }
+  };
+
+  // Login as guest
+  $scope.loginAsGuest = function() {
+    $scope.user = {
+      username: 'guest',
+      password: ''
+    };
+    $scope.login();
+  };
+  
+  // Login
+  $scope.login = function() {
+    User.login($scope.user).then(function() {
+      // 登录成功后移除login-page类
+      angular.element('body').removeClass('login-page');
+      
+      User.userInfo(true).then(function(data) {
+        $rootScope.userInfo = data;
+      });
+        // $state.go('document.default');
+        if($stateParams.redirectState) {
+          $state.go($stateParams.redirectState, JSON.parse($stateParams.redirectParams || '{}'));
+        } else {
+          $state.go('document.default');
+        }
+    }, function(data) {
+      if (data.data.type === 'ValidationCodeRequired') {
+        // A TOTP validation code is required to login
+        $scope.codeRequired = true;
+      } else {
+        // Login truly failed
+        var title = $translate.instant('login.login_failed_title');
+        var msg = $translate.instant('login.login_failed_message');
+        var btns = [{result: 'ok', label: $translate.instant('ok'), cssClass: 'btn-primary'}];
+        $dialog.messageBox(title, msg, btns);
+      }
+    });
+  };
+
+  // Password lost
+  $scope.openPasswordLost = function () {
+    $uibModal.open({
+      templateUrl: 'partial/docs/passwordlost.html',
+      controller: 'ModalPasswordLost'
+    }).result.then(function (username) {
+      if (username === null) {
+        return;
+      }
+
+      // Send a password lost email
+      Restangular.one('user').post('password_lost', {
+        username: username
+      }).then(function () {
+        var title = $translate.instant('login.password_lost_sent_title');
+        var msg = $translate.instant('login.password_lost_sent_message', { username: username });
+        var btns = [{result: 'ok', label: $translate.instant('ok'), cssClass: 'btn-primary'}];
+        $dialog.messageBox(title, msg, btns);
+      }, function () {
+        var title = $translate.instant('login.password_lost_error_title');
+        var msg = $translate.instant('login.password_lost_error_message');
+        var btns = [{result: 'ok', label: $translate.instant('ok'), cssClass: 'btn-primary'}];
+        $dialog.messageBox(title, msg, btns);
+      });
+    });
+  };
+});
